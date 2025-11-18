@@ -13,38 +13,38 @@ provider "google" {
   zone    = "us-central1-a"
 }
 
-# ---------------------------
+# ------------------------------------
 # 1. VPC Network
-# ---------------------------
+# ------------------------------------
 resource "google_compute_network" "vpc" {
-  name                    = "vpc"
+  name                    = "tf-vpc"
   auto_create_subnetworks = false
 }
 
-# ---------------------------
+# ------------------------------------
 # 2. Private Subnet
-# ---------------------------
+# ------------------------------------
 resource "google_compute_subnetwork" "private_subnet" {
-  name          = "private-subnet"
-  ip_cidr_range = "10.0.2.0/24"
+  name          = "tf-private-subnet"
+  ip_cidr_range = "10.20.1.0/24"
   region        = "us-central1"
   network       = google_compute_network.vpc.id
 }
 
-# ---------------------------
+# ------------------------------------
 # 3. Cloud Router
-# ---------------------------
+# ------------------------------------
 resource "google_compute_router" "router" {
-  name    = "kxnwork-router"
+  name    = "tf-router"
   region  = "us-central1"
   network = google_compute_network.vpc.id
 }
 
-# ---------------------------
+# ------------------------------------
 # 4. Cloud NAT
-# ---------------------------
+# ------------------------------------
 resource "google_compute_router_nat" "nat" {
-  name                               = "my-nat"
+  name                               = "tf-nat"
   region                             = "us-central1"
   router                             = google_compute_router.router.name
   nat_ip_allocate_option             = "AUTO_ONLY"
@@ -56,11 +56,11 @@ resource "google_compute_router_nat" "nat" {
   }
 }
 
-# ---------------------------
-# 5. Firewall for IAP SSH
-# ---------------------------
+# ------------------------------------
+# 5. Firewall rule for IAP SSH
+# ------------------------------------
 resource "google_compute_firewall" "allow_iap_ssh" {
-  name    = "allow-iap-ssh"
+  name    = "tf-allow-iap-ssh"
   network = google_compute_network.vpc.name
 
   allow {
@@ -72,11 +72,11 @@ resource "google_compute_firewall" "allow_iap_ssh" {
   target_tags   = ["allow-iap"]
 }
 
-# ---------------------------
-# 6. Private VM (no external IP)
-# ---------------------------
+# ------------------------------------
+# 6. Private VM
+# ------------------------------------
 resource "google_compute_instance" "private_vm" {
-  name         = "private-vm-1"
+  name         = "tf-private-vm"
   machine_type = "e2-micro"
   zone         = "us-central1-a"
   tags         = ["allow-iap"]
@@ -90,7 +90,7 @@ resource "google_compute_instance" "private_vm" {
 
   network_interface {
     subnetwork = google_compute_subnetwork.private_subnet.id
-    # NO access_config => no external IP
+    # No external IP
   }
 
   metadata = {
