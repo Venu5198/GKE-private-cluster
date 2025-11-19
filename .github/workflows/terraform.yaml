@@ -24,27 +24,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Authenticate to GCP
+      - name: Authenticate to GCP (Workload Identity)
         uses: google-github-actions/auth@v1
         with:
           workload_identity_provider: "projects/382207431122/locations/global/workloadIdentityPools/github-pool/providers/github-provider-2"
-          service_account: "github-deploy-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
+          service_account: "github-deploy-sa@kxnwork.iam.gserviceaccount.com"
+
+      - name: Install gcloud GKE auth plugin
+        run: |
+          gcloud components install gke-gcloud-auth-plugin --quiet
 
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v1
         with:
           project_id: ${{ env.PROJECT_ID }}
 
-      - name: Install GKE auth plugin
-        run: |
-          sudo apt-get update
-          sudo apt-get install google-cloud-cli-gke-gcloud-auth-plugin -y
-
-      - name: Configure Docker
+      - name: Configure Docker auth for Artifact Registry
         run: |
           gcloud auth configure-docker asia-south1-docker.pkg.dev --quiet
 
-      - name: Build and Push Image
+      - name: Build and Push Docker Image
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -56,11 +55,8 @@ jobs:
 
       - name: Get GKE Credentials
         run: |
-          gcloud container clusters get-credentials $CLUSTER_NAME \
-            --zone $CLUSTER_ZONE \
-            --project $PROJECT_ID
+          gcloud container clusters get-credentials $CLUSTER_NAME --zone $CLUSTER_ZONE --project $PROJECT_ID
 
       - name: Update deployment image
         run: |
-          kubectl set image deployment/my-app \
-            my-app=asia-south1-docker.pkg.dev/${PROJECT_ID}/${REPO}/${IMAGE}:${{ github.sha }}
+          kubectl set image deployment/my-app my-app=asia-south1-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:${{ github.sha }}
