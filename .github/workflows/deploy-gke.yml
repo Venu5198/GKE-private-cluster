@@ -1,0 +1,63 @@
+name: build-and-deploy
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  PROJECT_ID: kxnwork
+  REGION: asia-south1
+  CLUSTER_NAME: gke-private-cluster
+  CLUSTER_ZONE: asia-south1-a
+  REPO: my-repo
+  IMAGE: my-app
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Auth to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: "projects/382207431122/locations/global/workloadIdentityPools/github-pool/providers/github-provider-2"
+          service_account: "github-deploy-sa@kxnwork.iam.gserviceaccount.com"
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+          install_components: 'gcloud'
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker asia-south1-docker.pkg.dev --quiet
+
+      - name: Build and Push Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            asia-south1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.IMAGE }}:${{ github.sha }}
+            asia-south1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.IMAGE }}:latest
+
+      - name: Get GKE Credentials (force legacy plugin)
+        run: |
+          export USE_GKE_GCLOUD_AUTH_PLUGIN=False
+          gcloud container clusters get-credentials $CLUSTER_NAME \
+            --zone $CLUSTER_ZONE --project $PROJECT_ID
+
+      - name: Update Deployment Image
+        run: |
+          export USE_GKE_GCLOUD_AUTH_PLUGIN=False
+          kubectl set image deployment/my-app \
+            my-app=asia-south1-docker.pkg.dev/${PROJECT_ID}/${REPO}/${IMAGE}:${{ github.sha }}
