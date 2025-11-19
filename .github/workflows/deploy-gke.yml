@@ -2,14 +2,13 @@ name: build-and-deploy
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
 
 env:
   PROJECT_ID: kxnwork
-  REGION: asia-south1
   CLUSTER_NAME: gke-private-cluster
   CLUSTER_ZONE: asia-south1-a
+  REGION: asia-south1
   REPO: my-repo
   IMAGE: my-app
 
@@ -22,42 +21,50 @@ jobs:
       id-token: write
 
     steps:
-      - name: Checkout
+
+      - name: Checkout Code
         uses: actions/checkout@v4
 
+      # Authenticate using Workload Identity
       - name: Auth to GCP
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: "projects/382207431122/locations/global/workloadIdentityPools/github-pool/providers/github-provider-2"
           service_account: "github-deploy-sa@kxnwork.iam.gserviceaccount.com"
 
-      - name: Setup gcloud
+      - name: Install gcloud + kubectl + auth plugin
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ env.PROJECT_ID }}
-          install_components: 'gcloud'
+          install_components: kubectl,gke-gcloud-auth-plugin
+          version: latest
+
+      - name: Enable new GKE auth plugin
+        run: |
+          export USE_GKE_GCLOUD_AUTH_PLUGIN=True
+          echo "USE_GKE_GCLOUD_AUTH_PLUGIN=True" >> $GITHUB_ENV
 
       - name: Configure Docker for Artifact Registry
         run: |
           gcloud auth configure-docker asia-south1-docker.pkg.dev --quiet
 
-      - name: Build and Push Image
+      - name: Build and Push Docker Image
         uses: docker/build-push-action@v5
         with:
           context: .
+          platforms: linux/amd64
           push: true
           tags: |
             asia-south1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.IMAGE }}:${{ github.sha }}
             asia-south1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.IMAGE }}:latest
 
-      - name: Get GKE Credentials (force legacy plugin)
+      - name: Get GKE Credentials (new auth)
         run: |
-          export USE_GKE_GCLOUD_AUTH_PLUGIN=False
           gcloud container clusters get-credentials $CLUSTER_NAME \
-            --zone $CLUSTER_ZONE --project $PROJECT_ID
+             --zone $CLUSTER_ZONE \
+             --project $PROJECT_ID
 
       - name: Update Deployment Image
         run: |
-          export USE_GKE_GCLOUD_AUTH_PLUGIN=False
           kubectl set image deployment/my-app \
             my-app=asia-south1-docker.pkg.dev/${PROJECT_ID}/${REPO}/${IMAGE}:${{ github.sha }}
