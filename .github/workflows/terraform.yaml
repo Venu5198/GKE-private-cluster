@@ -24,27 +24,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Authenticate to GCP (Workload Identity)
+      - name: Authenticate to GCP
         uses: google-github-actions/auth@v1
         with:
           workload_identity_provider: "projects/382207431122/locations/global/workloadIdentityPools/github-pool/providers/github-provider-2"
-          service_account: "github-deploy-sa@kxnwork.iam.gserviceaccount.com"
+          service_account: "github-deploy-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
 
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v1
         with:
           project_id: ${{ env.PROJECT_ID }}
 
-      - name: Install GKE auth plugin (required for kubectl)
+      - name: Install GKE auth plugin
         run: |
           sudo apt-get update
-          sudo apt-get install google-cloud-sdk-gke-gcloud-auth-plugin -y
+          sudo apt-get install google-cloud-cli-gke-gcloud-auth-plugin -y
 
-      - name: Configure Docker for Artifact Registry
+      - name: Configure Docker
         run: |
           gcloud auth configure-docker asia-south1-docker.pkg.dev --quiet
 
-      - name: Build and push Docker image
+      - name: Build and Push Image
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -54,7 +54,7 @@ jobs:
             asia-south1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.IMAGE }}:${{ github.sha }}
             asia-south1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.IMAGE }}:latest
 
-      - name: Get GKE credentials
+      - name: Get GKE Credentials
         run: |
           gcloud container clusters get-credentials $CLUSTER_NAME \
             --zone $CLUSTER_ZONE \
@@ -62,4 +62,5 @@ jobs:
 
       - name: Update deployment image
         run: |
-          kubectl set image deployment/my-app my-app=asia-south1-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:${{ github.sha }}
+          kubectl set image deployment/my-app \
+            my-app=asia-south1-docker.pkg.dev/${PROJECT_ID}/${REPO}/${IMAGE}:${{ github.sha }}
