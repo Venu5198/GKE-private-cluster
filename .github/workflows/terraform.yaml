@@ -8,8 +8,8 @@ on:
 env:
   PROJECT_ID: kxnwork
   REGION: asia-south1
-  CLUSTER_NAME: gke-private-cluster
   CLUSTER_ZONE: asia-south1-a
+  CLUSTER_NAME: gke-private-cluster
   REPO: my-repo
   IMAGE: my-app
 
@@ -36,6 +36,10 @@ jobs:
         with:
           project_id: ${{ env.PROJECT_ID }}
 
+      - name: Enable GKE auth plugin
+        run: |
+          echo "USE_GKE_GCLOUD_AUTH_PLUGIN=True" >> $GITHUB_ENV
+
       - name: Configure Docker
         run: gcloud auth configure-docker asia-south1-docker.pkg.dev --quiet
 
@@ -48,10 +52,6 @@ jobs:
           tags: |
             asia-south1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.IMAGE }}:${{ github.sha }}
             asia-south1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.IMAGE }}:latest
-
-      - name: Disable GKE Auth Plugin (required)
-        run: |
-          echo "USE_GKE_GCLOUD_AUTH_PLUGIN=False" >> $GITHUB_ENV
 
       - name: Get GKE credentials
         run: |
