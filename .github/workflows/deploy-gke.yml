@@ -12,7 +12,6 @@ env:
   CLUSTER_NAME: gke-private-cluster
   REPO: my-repo
   IMAGE: my-app
-  USE_GKE_GCLOUD_AUTH_PLUGIN: "True"
 
 jobs:
   build-and-deploy:
@@ -26,36 +25,38 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Authenticate to Google Cloud
+      - name: Authenticate to GCP
         uses: google-github-actions/auth@v1
         with:
           workload_identity_provider: "projects/382207431122/locations/global/workloadIdentityPools/github-pool/providers/github-provider-2"
           service_account: "github-deploy-sa@kxnwork.iam.gserviceaccount.com"
 
-      - name: Setup Google Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v1
         with:
-          project_id: kxnwork
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Disable GKE Auth Plugin
+        run: echo "USE_GKE_GCLOUD_AUTH_PLUGIN=False" >> $GITHUB_ENV
 
       - name: Configure Docker for Artifact Registry
-        run: |
-          gcloud auth configure-docker asia-south1-docker.pkg.dev --quiet
+        run: gcloud auth configure-docker asia-south1-docker.pkg.dev --quiet
 
-      - name: Build and push image
+      - name: Build and Push Image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
           tags: |
-            asia-south1-docker.pkg.dev/kxnwork/my-repo/my-app:${{ github.sha }}
-            asia-south1-docker.pkg.dev/kxnwork/my-repo/my-app:latest
+            asia-south1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.IMAGE }}:${{ github.sha }}
+            asia-south1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.IMAGE }}:latest
 
-      - name: Get GKE credentials
+      - name: Get GKE Credentials
         run: |
           gcloud container clusters get-credentials $CLUSTER_NAME \
-            --zone $CLUSTER_ZONE \
-            --project $PROJECT_ID
+            --zone $CLUSTER_ZONE --project $PROJECT_ID
 
-      - name: Update deployment image
+      - name: Deploy to GKE
         run: |
-          kubectl set image deployment/my-app my-app=asia-south1-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:${{ github.sha }}
+          kubectl set image deployment/my-app my-app=asia-south1-docker.pkg.dev/${PROJECT_ID}/${REPO}/${IMAGE}:${{ github.sha }}
+          kubectl rollout status deployment/my-app
