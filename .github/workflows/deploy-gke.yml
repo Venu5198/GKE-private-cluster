@@ -8,48 +8,34 @@ on:
 env:
   PROJECT_ID: kxnwork
   REGION: asia-south1
+  CLUSTER_ZONE: asia-south1-a
   CLUSTER_NAME: gke-private-cluster
-  CLUSTER_ZONE: asia-south1-a   # <--- use zone (you created the cluster zonal)
   REPO: my-repo
   IMAGE: my-app
-
-permissions:
-  contents: read
-  id-token: write   # required for workload identity federation
+  USE_GKE_GCLOUD_AUTH_PLUGIN: "True"
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: read
+      id-token: write
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Authenticate to GCP via Workload Identity Federation (no long-lived keys)
-      - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v1
         with:
           workload_identity_provider: "projects/382207431122/locations/global/workloadIdentityPools/github-pool/providers/github-provider-2"
           service_account: "github-deploy-sa@kxnwork.iam.gserviceaccount.com"
-          create_credentials_file: true
-          export_environment_variables: true
 
-      # Install gcloud, kubectl and the GKE auth plugin on the runner
-      - name: Setup gcloud + kubectl + GKE auth plugin
+      - name: Setup Google Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
         with:
-          project_id: ${{ env.PROJECT_ID }}
-          install_components: |
-            kubectl
-            gke-gcloud-auth-plugin
-
-      # Ensure kubectl uses the new auth plugin
-      - name: Enable GKE auth plugin for kubectl
-        run: |
-          echo "USE_GKE_GCLOUD_AUTH_PLUGIN=True" >> $GITHUB_ENV
-          # verify gcloud & plugin present
-          gcloud --version
-          kubectl version --client
+          project_id: kxnwork
 
       - name: Configure Docker for Artifact Registry
         run: |
@@ -60,17 +46,16 @@ jobs:
         with:
           context: .
           push: true
-          platforms: linux/amd64
           tags: |
-            asia-south1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.IMAGE }}:${{ github.sha }}
-            asia-south1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.IMAGE }}:latest
+            asia-south1-docker.pkg.dev/kxnwork/my-repo/my-app:${{ github.sha }}
+            asia-south1-docker.pkg.dev/kxnwork/my-repo/my-app:latest
 
       - name: Get GKE credentials
         run: |
-          # use zone here (your cluster is zonal). Use --region if your cluster is regional.
-          gcloud container clusters get-credentials "${{ env.CLUSTER_NAME }}" --zone "${{ env.CLUSTER_ZONE }}" --project "${{ env.PROJECT_ID }}"
+          gcloud container clusters get-credentials $CLUSTER_NAME \
+            --zone $CLUSTER_ZONE \
+            --project $PROJECT_ID
 
       - name: Update deployment image
         run: |
-          kubectl --namespace=default set image deployment/my-app \
-            my-app=asia-south1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.IMAGE }}:${{ github.sha }}
+          kubectl set image deployment/my-app my-app=asia-south1-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:${{ github.sha }}
